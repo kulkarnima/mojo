@@ -88,6 +88,21 @@ fn matmul_vectorized(inout C: Matrix, A: Matrix, B: Matrix):
 
       vectorize[dot, nelts, size = C.cols]()
 
+fn matmul_parallelized(inout C: Matrix, A: Matrix, B: Matrix):
+  @parameter
+  fn calc_row(m: Int):
+    for k in range(A.cols):
+
+      @parameter
+      fn dot[nelts: Int](n: Int):
+        C.store[nelts](
+            m, n, C.load[nelts](m, n) + A[m, k] * B.load[nelts](k, n)
+        )
+
+      vectorize[dot, nelts, size = C.cols]()
+
+  parallelize[calc_row](C.rows, C.rows)
+
 @always_inline
 fn bench[
     func: fn(inout Matrix, Matrix, Matrix) -> None, name: StringLiteral
@@ -140,6 +155,11 @@ fn test_all() raises:
 
   matmul_naive(C, A, B)
 
+  if not test_matrix_equal[matmul_vectorized](C, A, B):
+    raise Error("Vectorize output does not match naive implementation")
+  if not test_matrix_equal[matmul_parallelized](C, A, B):
+    raise Error("Parallelize output does not match naive implementation")
+
   A.data.free()
   B.data.free()
   C.data.free()
@@ -157,3 +177,4 @@ fn main() raises:
 
   bench[matmul_naive, "Naive: "](python_gflops, numpy_gflops)
   bench[matmul_vectorized, "Vectorized: "](python_gflops, numpy_gflops)
+  bench[matmul_parallelized, "Parallelize: "](python_gflops, numpy_gflops)
